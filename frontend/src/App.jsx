@@ -1,4 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import { Toaster } from 'react-hot-toast';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
@@ -6,7 +7,22 @@ import Chat from './pages/Chat';
 import AIPage from "./pages/AIPage";
 
 function App() {
-  const token = localStorage.getItem('token');
+  const [token, setToken] = useState(localStorage.getItem('token'));
+
+  useEffect(() => {
+    const checkToken = () => {
+      const currentToken = localStorage.getItem('token');
+      setToken(currentToken);
+    };
+
+    // Check immediately
+    checkToken();
+
+    // Set up interval to check for token changes
+    const interval = setInterval(checkToken, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <Router>

@@ -14,7 +14,7 @@ const AIPage = () => {
     setMessages(prev => [...prev, userMsg]);
 
     const { data } = await axios.post(
-      "http://localhost:5000/api/ai/ask-ai",
+      "http://localhost:5000/api/ai/ask",
       { message: input },
       { headers: { Authorization: `Bearer ${token}` } }
     );

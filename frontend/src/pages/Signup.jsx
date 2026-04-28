@@ -21,8 +21,17 @@ const Signup = () => {
         password
       });
 
-      toast.success('Account created successfully!');
-      navigate('/login');
+      // After successful registration, automatically log in the user
+      const loginResponse = await axios.post('http://localhost:5000/api/auth/login', {
+        email,
+        password
+      });
+
+      localStorage.setItem('token', loginResponse.data.token);
+      localStorage.setItem('user', JSON.stringify(loginResponse.data.user));
+      
+      toast.success('Account created and logged in successfully!');
+      navigate('/chat');
     } catch (error) {
       toast.error(error.response?.data?.message || 'Signup failed');
     } finally {

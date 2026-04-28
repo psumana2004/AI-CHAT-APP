@@ -41,4 +41,68 @@ const getMessages = async (req, res) => {
   }
 };
 
+// ==================== CREATE CHAT ====================
+exports.createChat = async (req, res) => {
+  try {
+    const { participantId } = req.body;
+    const userId = req.user.id;
+
+    // Check if chat already exists between these two users
+    let chat = await Chat.findOne({
+      participants: { $all: [userId, participantId] },
+      isGroup: false
+    });
+
+    if (chat) {
+      return res.json(chat);
+    }
+
+    // Create new chat
+    chat = await Chat.create({
+      participants: [userId, participantId],
+      isGroup: false
+    });
+
+    const populatedChat = await chat.populate('participants', 'name avatar');
+    
+    res.status(201).json(populatedChat);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to create chat" });
+  }
+};
+
+// ==================== DELETE CHAT ====================
+exports.deleteChat = async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const userId = req.user.id;
+
+    const chat = await Chat.findById(chatId);
+
+    if (!chat) {
+      return res.status(404).json({ message: "Chat not found" });
+    }
+
+    // Check if user is part of this chat
+    if (!chat.participants.includes(userId)) {
+      return res.status(403).json({ message: "You are not authorized to delete this chat" });
+    }
+
+    // Delete all messages in this chat
+    await Message.deleteMany({ chat: chatId });
+
+    // Delete the chat itself
+    await Chat.findByIdAndDelete(chatId);
+
+    // Notify other users via socket (real-time update)
+    req.io.to(chatId).emit('chatDeleted', chatId);
+
+    res.json({ message: "Chat deleted successfully" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to delete chat" });
+  }
+};
+
 module.exports = { sendMessage, getMessages };

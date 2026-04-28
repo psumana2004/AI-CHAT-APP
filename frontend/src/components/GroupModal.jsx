@@ -12,11 +12,13 @@ const GroupModal = ({ show, setShow, token, fetchChats }) => {
     }
 
     try {
+      const usersArray = users.split(",").map(u => u.trim()).filter(u => u);
+      
       const { data } = await axios.post(
         "http://localhost:5000/api/chat/group",
         {
           name: groupName,
-          users: users.split(",").map(u => u.trim())
+          users: usersArray
         },
         {
           headers: { Authorization: `Bearer ${token}` }
