@@ -104,22 +104,22 @@ const SettingsMenu = ({
               👤 Edit Profile
             </button>
 
-            <button className="w-full text-left px-4 py-3 hover:bg-gray-800 flex items-center gap-3">
-              ⭐ Starred Messages
-            </button>
-
             <button
-              onClick={handleDeleteChat}
-              className="w-full text-left px-4 py-3 hover:bg-gray-800 text-red-400 flex items-center gap-3"
+              onClick={() => navigate('/starred-messages')}
+              className="w-full text-left px-4 py-3 hover:bg-gray-800 flex items-center gap-3"
             >
-              🗑 Delete Current Chat
+              ⭐ Starred Messages
             </button>
 
             <button
               onClick={onToggleTheme}
               className="w-full text-left px-4 py-3 hover:bg-gray-800 flex items-center gap-3"
             >
-              🎨 Toggle Dark Mode
+              🎨 Change Theme
+              <span className="text-xs text-gray-500 ml-auto">
+                {localStorage.getItem('theme') === 'dark' ? '🌙 Dark' : 
+                 localStorage.getItem('theme') === 'light' ? '☀️ Light' : '🌊 Ocean'}
+              </span>
             </button>
 
             <div className="border-t border-gray-700 my-1" />

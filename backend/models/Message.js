@@ -22,6 +22,15 @@ const messageSchema = new mongoose.Schema({
   fileType: {
     type: String,
     default: null
+  },
+  starred: {
+    type: Boolean,
+    default: false
+  },
+  starredBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
   }
 }, { timestamps: true });
 

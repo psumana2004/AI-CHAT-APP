@@ -4,6 +4,7 @@ import { Toaster } from 'react-hot-toast';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Chat from './pages/Chat';
+import StarredMessages from './pages/StarredMessages';
 import AIPage from "./pages/AIPage";
 
 function App() {
@@ -32,6 +33,7 @@ function App() {
           <Route path="/login" element={!token ? <Login /> : <Navigate to="/chat" />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/chat" element={token ? <Chat /> : <Navigate to="/login" />} />
+          <Route path="/starred-messages" element={token ? <StarredMessages /> : <Navigate to="/login" />} />
           <Route path="/ai" element={<AIPage />} />
         </Routes>
       </div>

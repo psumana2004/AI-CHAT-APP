@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import io from 'socket.io-client';
-import toast from 'react-hot-toast';
 import EmojiPicker from 'emoji-picker-react';
+import { toast } from 'react-hot-toast';
+import AIChat from '../components/AIChat';
 import GroupModal from "../components/GroupModal";
 import CreateChatModal from "../components/CreateChatModal";
 import SettingsMenu from "../components/SettingsMenu";
@@ -20,6 +21,7 @@ const Chat = () => {
   const [typingUsers, setTypingUsers] = useState({});
   const [showGroupModal, setShowGroupModal] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showAIChat, setShowAIChat] = useState(false);
 
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [currentUser, setCurrentUser] = useState(() => JSON.parse(localStorage.getItem('user')));
@@ -54,6 +56,22 @@ const Chat = () => {
   const onEmojiClick = (emojiObject) => {
     const emoji = emojiObject.emoji;
     setNewMessage(prev => prev + emoji);
+  };
+
+  const toggleStarMessage = async (messageId) => {
+    try {
+      const response = await axios.patch(`http://localhost:5000/api/messages/${messageId}/star`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      // Update the message in the local state
+      setMessages(prev => prev.map(msg => 
+        msg._id === messageId ? response.data : msg
+      ));
+    } catch (error) {
+      console.error('Error toggling star:', error);
+      toast.error('Failed to star message');
+    }
   };
 
   useEffect(() => {
@@ -196,19 +214,26 @@ const Chat = () => {
   };
 
   const toggleTheme = () => {
-    const isDark = document.documentElement.classList.contains('dark');
+    const currentTheme = localStorage.getItem('theme') || 'dark';
+    let newTheme;
     
-    if (isDark) {
-      // Switch to light mode
-      document.documentElement.classList.remove('dark');
-      document.body.classList.add('light');
-      localStorage.setItem('theme', 'light');
+    if (currentTheme === 'dark') {
+      newTheme = 'light';
+    } else if (currentTheme === 'light') {
+      newTheme = 'ocean';
     } else {
-      // Switch to dark mode
-      document.documentElement.classList.add('dark');
-      document.body.classList.remove('light');
-      localStorage.setItem('theme', 'dark');
+      newTheme = 'dark';
     }
+    
+    // Remove all theme classes
+    document.documentElement.classList.remove('dark', 'light', 'ocean');
+    document.body.classList.remove('dark', 'light', 'ocean');
+    
+    // Add new theme class
+    document.documentElement.classList.add(newTheme);
+    document.body.classList.add(newTheme);
+    
+    localStorage.setItem('theme', newTheme);
   };
 
   useEffect(() => {
@@ -216,12 +241,15 @@ const Chat = () => {
   }, []);
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else if (savedTheme === 'light') {
-      document.documentElement.classList.remove('dark');
-    }
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    
+    // Remove all theme classes
+    document.documentElement.classList.remove('dark', 'light', 'ocean');
+    document.body.classList.remove('dark', 'light', 'ocean');
+    
+    // Add saved theme class
+    document.documentElement.classList.add(savedTheme);
+    document.body.classList.add(savedTheme);
   }, []);
 
   useEffect(() => {
@@ -230,6 +258,37 @@ const Chat = () => {
       fetchMessages(selectedChat._id);
     }
   }, [selectedChat]);
+
+  // Handle navigation to specific message from starred messages
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const chatId = urlParams.get('chatId');
+    const messageId = urlParams.get('messageId');
+    
+    // If chatId is provided and we have chats, select that chat
+    if (chatId && chats.length > 0 && !selectedChat) {
+      const targetChat = chats.find(chat => chat._id === chatId);
+      if (targetChat) {
+        setSelectedChat(targetChat);
+      }
+    }
+    
+    // If messageId is provided and we have messages, scroll to that message
+    if (messageId && messages.length > 0) {
+      // Find the message element
+      const messageElement = document.getElementById(`message-${messageId}`);
+      if (messageElement) {
+        // Scroll to the message
+        messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        
+        // Add highlight effect
+        messageElement.classList.add('ring-2', 'ring-yellow-500', 'ring-opacity-50');
+        setTimeout(() => {
+          messageElement.classList.remove('ring-2', 'ring-yellow-500', 'ring-opacity-50');
+        }, 2000);
+      }
+    }
+  }, [chats, messages, selectedChat]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -330,13 +389,22 @@ const Chat = () => {
                 <p className="text-xs text-gray-400">Online</p>
               </div>
             </div>
-            <SettingsMenu 
-              user={currentUser}
-              currentChatId={selectedChat?._id}
-              onDeleteCurrentChat={handleDeleteChat}
-              onProfileUpdate={handleProfileUpdate}
-              onToggleTheme={toggleTheme}
-            />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowAIChat(true)}
+                className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white p-2 rounded-lg transition-all"
+                title="Ask AI"
+              >
+                🤖
+              </button>
+              <SettingsMenu 
+                user={currentUser}
+                currentChatId={selectedChat?._id}
+                onDeleteCurrentChat={handleDeleteChat}
+                onProfileUpdate={handleProfileUpdate}
+                onToggleTheme={toggleTheme}
+              />
+            </div>
           </div>
         </div>
         
@@ -423,7 +491,20 @@ const Chat = () => {
           <>
             <div className="p-4 border-b border-gray-800 bg-gray-900 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gray-700 rounded-full flex items-center justify-center text-2xl">👤</div>
+                <div className="w-10 h-10 bg-gray-700 rounded-full flex items-center justify-center overflow-hidden">
+                  {(() => {
+                    const otherUser = selectedChat.participants?.find(p => p._id !== currentUser.id);
+                    return otherUser?.avatar ? (
+                      <img 
+                        src={otherUser.avatar.includes('http') ? `${otherUser.avatar}?t=${Date.now()}` : `http://localhost:5000/uploads/${otherUser.avatar}?t=${Date.now()}`}
+                        alt={otherUser.name || "Profile"} 
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-2xl">👤</span>
+                    );
+                  })()}
+                </div>
                 <h2 className="font-semibold">
                   {selectedChat.participants?.find(p => p._id !== currentUser.id)?.name}
                 </h2>
@@ -445,11 +526,21 @@ const Chat = () => {
               {messages.map((msg) => (
                 <div
                   key={msg._id}
-                  className={`flex ${msg.sender._id === currentUser.id ? 'justify-end' : 'justify-start'}`}
+                  id={`message-${msg._id}`}
+                  className={`flex ${msg.sender._id === currentUser.id ? 'justify-end' : 'justify-start'} group`}
                 >
-                  <div className={`max-w-[65%] px-5 py-3 rounded-3xl ${
+                  <div className={`max-w-[65%] px-5 py-3 rounded-3xl relative transition-all ${
                     msg.sender._id === currentUser.id ? 'bg-blue-600 text-white' : 'bg-gray-800'
                   }`}>
+                    <button
+                      onClick={() => toggleStarMessage(msg._id)}
+                      className={`absolute -top-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 ${
+                        msg.starred ? 'bg-yellow-500 text-gray-900' : 'bg-gray-700 text-gray-400 hover:text-yellow-400'
+                      }`}
+                      title={msg.starred ? "Unstar message" : "Star message"}
+                    >
+                      {msg.starred ? '⭐' : '☆'}
+                    </button>
                     <p>{msg.content}</p>
                     <p className="text-xs mt-1 opacity-75">
                       {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -482,7 +573,7 @@ const Chat = () => {
                   <button
                     type="button"
                     onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                    className="p-3 text-gray-400 hover:text-yellow-400 transition-colors"
+                    className="p-4 text-2xl text-gray-400 hover:text-yellow-400 hover:bg-gray-700 rounded-full transition-all"
                     title="Add emoji"
                   >
                     😊
@@ -493,9 +584,9 @@ const Chat = () => {
                       <div className="bg-gray-800 rounded-lg shadow-2xl border border-gray-700">
                         <EmojiPicker
                           onEmojiClick={onEmojiClick}
-                          theme="dark"
-                          height={350}
-                          width={300}
+                          theme={document.documentElement.classList.contains('light') ? 'light' : 'dark'}
+                          height={450}
+                          width={400}
                         />
                       </div>
                     </div>
@@ -538,6 +629,13 @@ const Chat = () => {
         token={token}
         fetchChats={fetchChats}
       />
+      
+      {showAIChat && (
+        <AIChat
+          onClose={() => setShowAIChat(false)}
+          currentUser={currentUser}
+        />
+      )}
     </div>
   );
 };
