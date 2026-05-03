@@ -15,13 +15,27 @@ const messageSchema = new mongoose.Schema({
     ref: 'Chat',
     required: true
   },
-  fileUrl: {
-    type: String,
-    default: null
-  },
-  fileType: {
-    type: String,
-    default: null
+  file: {
+    url: {
+      type: String,
+      default: null
+    },
+    fileId: {
+      type: String,
+      default: null
+    },
+    name: {
+      type: String,
+      default: null
+    },
+    size: {
+      type: Number,
+      default: null
+    },
+    type: {
+      type: String,
+      default: null
+    }
   },
   starred: {
     type: Boolean,

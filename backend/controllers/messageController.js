@@ -35,8 +35,13 @@ const getMessages = async (req, res) => {
       .populate('sender', 'name avatar')
       .sort({ createdAt: 1 });
 
+    console.log('📋 Fetching messages for chat:', chatId);
+    console.log('📋 Messages found:', messages.length);
+    console.log('📋 Messages with files:', messages.filter(m => m.file && m.file.url).length);
+
     res.json(messages);
   } catch (error) {
+    console.error('❌ Error fetching messages:', error);
     res.status(500).json({ message: error.message });
   }
 };

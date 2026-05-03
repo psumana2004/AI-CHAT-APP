@@ -19,13 +19,35 @@ const Chat = () => {
   const [userIdInput, setUserIdInput] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [typingUsers, setTypingUsers] = useState({});
+  const [userStatuses, setUserStatuses] = useState({}); // Track online/offline status
   const [showGroupModal, setShowGroupModal] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showAIChat, setShowAIChat] = useState(false);
+  const [attachedFile, setAttachedFile] = useState(null);
 
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [currentUser, setCurrentUser] = useState(() => JSON.parse(localStorage.getItem('user')));
   const messagesEndRef = useRef(null);
+
+  // Helper function to format last seen time
+  const formatLastSeen = (lastSeen) => {
+    if (!lastSeen) return '';
+    
+    const now = new Date();
+    const lastSeenDate = new Date(lastSeen);
+    const diffMs = now - lastSeenDate;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins} minutes ago`;
+    if (diffHours < 24) return `${diffHours} hours ago`;
+    if (diffDays === 1) return 'yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    
+    return lastSeenDate.toLocaleDateString();
+  };
 
   // Effect to update token and currentUser when localStorage changes
   useEffect(() => {
@@ -58,6 +80,20 @@ const Chat = () => {
     setNewMessage(prev => prev + emoji);
   };
 
+  const handleFileSelect = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      setAttachedFile(file);
+      console.log('📎 File selected:', file);
+      toast.success(`File attached: ${file.name}`);
+    }
+  };
+
+  const removeAttachedFile = () => {
+    setAttachedFile(null);
+    toast.success('File removed');
+  };
+
   const toggleStarMessage = async (messageId) => {
     try {
       const response = await axios.patch(`http://localhost:5000/api/messages/${messageId}/star`, {}, {
@@ -79,70 +115,196 @@ const Chat = () => {
     
     socket = io('http://localhost:5000');
 
-    socket.emit('joinUser', currentUser.id);
+    socket.on('connect', () => {
+      console.log('🟢 SOCKET CONNECTED:', socket.id);
+      socket.emit('joinUser', currentUser.id);
+    });
+
+    socket.on('disconnect', () => {
+      console.log('🔴 SOCKET DISCONNECTED');
+    });
 
     socket.on('receiveMessage', (newMsg) => {
       console.log('📨 REAL-TIME MESSAGE RECEIVED:', newMsg);
+      console.log('🎯 Current selected chat:', selectedChat?._id);
+      console.log('📨 Message chat ID:', newMsg.chat);
+      console.log('👤 Current user ID:', currentUser.id);
+      console.log('📨 Message sender ID:', newMsg.sender?._id);
+      console.log('📨 Message ID:', newMsg._id);
+      console.log('📨 Is instant message?', newMsg._id.startsWith('instant_'));
+      console.log('📨 Current messages count:', messages.length);
 
-      if (selectedChat && newMsg.chat === selectedChat._id) {
-        setMessages(prev => {
-          // Check if message already exists (to prevent duplicates)
-          const messageExists = prev.some(msg => msg._id === newMsg._id);
-          if (messageExists) {
-            // Update existing message if it's a temporary one
-            return prev.map(msg => 
-              msg._id === newMsg._id ? newMsg : msg
-            );
-          } else {
+      // AGGRESSIVE APPROACH: Always try to display messages for real-time experience
+      if (selectedChat) {
+        console.log('🎯 SELECTED CHAT EXISTS - Attempting to add message');
+        
+        // Check if message belongs to current chat
+        const belongsToCurrentChat = newMsg.chat === selectedChat._id;
+        console.log('🎯 Message belongs to current chat:', belongsToCurrentChat);
+        
+        // FOR RECIPIENTS: Always add message if it's from another user
+        const isFromOtherUser = newMsg.sender._id !== currentUser.id;
+        console.log('🎯 Is message from other user?', isFromOtherUser);
+        
+        if (belongsToCurrentChat || (isFromOtherUser && selectedChat)) {
+          console.log('✅ ADDING MESSAGE TO CURRENT CHAT');
+          setMessages(prev => {
+            console.log('🎯 PREV MESSAGES COUNT:', prev.length);
+            
+            // Check if this is a confirmed message replacing an instant one
+            if (!newMsg._id.startsWith('instant_')) {
+              const instantMessageIndex = prev.findIndex(msg => 
+                msg._id.startsWith('instant_') && 
+                msg.content === newMsg.content &&
+                msg.sender._id === newMsg.sender._id
+              );
+              
+              if (instantMessageIndex !== -1) {
+                console.log('🔄 REPLACING INSTANT MESSAGE WITH CONFIRMED');
+                const newMessages = [...prev];
+                newMessages[instantMessageIndex] = newMsg;
+                return newMessages;
+              }
+            }
+            
+            // Check for duplicates
+            const messageExists = prev.some(msg => msg._id === newMsg._id);
+            if (messageExists) {
+              console.log('🔄 MESSAGE ALREADY EXISTS - UPDATING');
+              return prev.map(msg => msg._id === newMsg._id ? newMsg : msg);
+            }
+            
             // Add new message
-            return [...prev, newMsg];
+            console.log('➕ ADDING NEW MESSAGE');
+            const newMessages = [...prev, newMsg];
+            console.log('🎯 NEW MESSAGES COUNT:', newMessages.length);
+            console.log('🎯 MESSAGE ADDED FOR:', isFromOtherUser ? 'RECIPIENT' : 'SENDER');
+            return newMessages;
+          });
+        } else {
+          console.log('❌ MESSAGE DOES NOT BELONG TO CURRENT CHAT');
+          console.log('❌ Expected chat ID:', selectedChat._id);
+          console.log('❌ Received chat ID:', newMsg.chat);
+          console.log('❌ Chat ID types:', typeof selectedChat._id, typeof newMsg.chat);
+          console.log('❌ String comparison:', String(selectedChat._id) === String(newMsg.chat));
+          
+          // FORCE ADD FOR RECIPIENTS: If message is from other user, add it anyway
+          if (isFromOtherUser) {
+            console.log('🔥 FORCE ADDING MESSAGE FOR RECIPIENT (CHAT ID MISMATCH)');
+            setMessages(prev => {
+              console.log('🔥 FORCE ADD - PREV COUNT:', prev.length);
+              const newMessages = [...prev, newMsg];
+              console.log('🔥 FORCE ADD - NEW COUNT:', newMessages.length);
+              return newMessages;
+            });
           }
-        });
+        }
+      } else {
+        console.log('❌ NO SELECTED CHAT - CANNOT ADD MESSAGE');
       }
 
-      fetchChats();
+      // Don't call fetchChats() here - it might reset unread count from server
     });
 
-    socket.on('userTyping', ({ chatId, userId, isTyping }) => {
-      console.log('📝 Typing event received:', { chatId, userId, isTyping, selectedChatId: selectedChat?._id });
-      if (selectedChat && chatId === selectedChat._id) {
-        console.log('✅ Updating typing state for user:', userId, 'isTyping:', isTyping);
-        setTypingUsers(prev => ({ ...prev, [userId]: isTyping }));
-      }
+    // Handle chat list updates for real-time synchronization
+    socket.on('updateChatList', (chatUpdate) => {
+      console.log('📋 CHAT LIST UPDATE RECEIVED:', chatUpdate);
+      console.log('📋 Chat ID:', chatUpdate.chatId);
+      console.log('📋 Latest message:', chatUpdate.latestMessage);
+      
+      // Don't fetchChats() here - it might reset unread count from server
+      // Instead, only update the specific chat in the local state
+      setChats(prev => prev.map(chat => {
+        if (chat._id === chatUpdate.chatId) {
+          console.log('📋 UPDATING CHAT IN LIST:', chat._id);
+          return {
+            ...chat,
+            latestMessage: chatUpdate.latestMessage
+          };
+        }
+        return chat;
+      }));
     });
 
-    socket.on('userProfileUpdated', (updatedUser) => {
-      console.log('👤 Profile update received:', updatedUser);
-      console.log('🆔 Current user ID:', currentUser?.id);
+    // Handle other user's chat list updates (4-way broadcasting) - CRITICAL FOR UNREAD COUNTS
+    socket.on('updateOtherUserChatList', (chatUpdate) => {
+      console.log('📋 3️⃣ OTHER USER CHAT LIST UPDATE RECEIVED:', chatUpdate);
+      console.log('📋 Chat ID:', chatUpdate.chatId);
+      console.log('📋 Latest message:', chatUpdate.latestMessage);
+      console.log('📋 Is other user:', chatUpdate.isOtherUser);
+      console.log('📋 Unread count increment:', chatUpdate.unreadCountIncrement);
       
-      if (updatedUser._id === currentUser?.id) {
-        console.log('✅ Updating current user state');
-        setCurrentUser(updatedUser);
-        localStorage.setItem('user', JSON.stringify(updatedUser));
-      }
-      
-      console.log('🔄 Updating chats participants...');
+      // Update the specific chat in the chats array if it exists
       setChats(prev => {
-        const updatedChats = prev.map(chat => ({
-          ...chat,
-          participants: chat.participants?.map(p => 
-            p._id === updatedUser._id ? updatedUser : p
-          )
-        }));
-        console.log('📋 Updated chats:', updatedChats);
-        console.log('🔍 Updated user data:', updatedUser);
-        return updatedChats;
+        console.log('📋 PREVIOUS CHATS STATE:', prev.map(c => ({ id: c._id, unreadCount: c.unreadCount })));
+        
+        const newChats = prev.map(chat => {
+          if (chat._id === chatUpdate.chatId) {
+            console.log('📋 UPDATING OTHER USER CHAT IN LIST:', chat._id);
+            const currentCount = chat.unreadCount || 0;
+            
+            // Only increment if unreadCountIncrement is provided (instant message)
+            // For confirmed messages, just update the latest message without changing count
+            const newCount = chatUpdate.unreadCountIncrement !== undefined 
+              ? currentCount + (chatUpdate.unreadCountIncrement || 0)
+              : currentCount;
+              
+            console.log('📋 Current count:', currentCount, 'Increment:', chatUpdate.unreadCountIncrement, 'New count:', newCount);
+            console.log('📋 Chat update object:', chatUpdate);
+            
+            return {
+              ...chat,
+              latestMessage: chatUpdate.latestMessage,
+              unreadCount: newCount
+            };
+          }
+          return chat;
+        });
+        
+        console.log('📋 NEW CHATS STATE:', newChats.map(c => ({ id: c._id, unreadCount: c.unreadCount })));
+        return newChats;
       });
+    });
+
+    // Handle all chat lists updates for global synchronization
+    socket.on('updateAllChatLists', (chatUpdate) => {
+      console.log('📋 ALL CHAT LISTS UPDATE RECEIVED:', chatUpdate);
+      console.log('📋 Chat ID:', chatUpdate.chatId);
+      console.log('📋 Latest message:', chatUpdate.latestMessage);
+      console.log('📋 Sender ID:', chatUpdate.senderId);
       
-      console.log('💬 Updating messages...');
-      setMessages(prev => {
-        const updatedMessages = prev.map(msg => ({
-          ...msg,
-          sender: msg.sender._id === updatedUser._id ? updatedUser : msg.sender
-        }));
-        console.log('📝 Updated messages:', updatedMessages);
-        return updatedMessages;
-      });
+      // Update the specific chat in the chats array if it exists
+      setChats(prev => prev.map(chat => {
+        if (chat._id === chatUpdate.chatId) {
+          console.log('📋 UPDATING CHAT IN ALL LISTS:', chat._id);
+          return {
+            ...chat,
+            latestMessage: chatUpdate.latestMessage
+          };
+        }
+        return chat;
+      }));
+    });
+
+    // Handle sender's chat list updates (4-way broadcasting)
+    socket.on('updateSenderChatList', (chatUpdate) => {
+      console.log('📋 2️⃣ SENDER CHAT LIST UPDATE RECEIVED:', chatUpdate);
+      console.log('📋 Chat ID:', chatUpdate.chatId);
+      console.log('📋 Latest message:', chatUpdate.latestMessage);
+      console.log('📋 Is sender:', chatUpdate.isSender);
+      
+      // Don't fetchChats() here - it might reset unread count from server
+      // Instead, only update the specific chat in the local state
+      setChats(prev => prev.map(chat => {
+        if (chat._id === chatUpdate.chatId) {
+          console.log('📋 UPDATING SENDER CHAT IN LIST:', chat._id);
+          return {
+            ...chat,
+            latestMessage: chatUpdate.latestMessage
+          };
+        }
+        return chat;
+      }));
     });
 
     return () => {
@@ -175,7 +337,29 @@ const Chat = () => {
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
-    window.location.href = "/login";
+    setToken(null);
+    setCurrentUser(null);
+    toast.success("Logged out successfully");
+    navigate("/login");
+  };
+
+  const handleMarkAllAsRead = () => {
+    console.log('📖 Marking all messages as read');
+    
+    // Reset all unread counts to 0
+    setChats(prev => prev.map(chat => ({
+      ...chat,
+      unreadCount: 0
+    })));
+    
+    // Show success message
+    toast.success("All messages marked as read");
+    
+    // Optionally emit to server if needed
+    if (socket) {
+      // You could emit an event to server to mark messages as read in database
+      // socket.emit('markAllAsRead', { userId: currentUser.id });
+    }
   };
 
   const handleDeleteChat = async (chatId) => {
@@ -254,8 +438,33 @@ const Chat = () => {
 
   useEffect(() => {
     if (selectedChat && socket) {
+      console.log('🏠 JOINING CHAT ROOM:', selectedChat._id);
+      console.log('🔗 Socket connected:', socket.connected);
+      console.log('👤 Current user:', currentUser.id);
+      console.log('📡 Socket transport:', socket.io.engine.transport.name);
+      
+      // Join chat room immediately
       socket.emit('joinChat', selectedChat._id);
+      
+      // Listen for confirmation that we joined the room
+      socket.on('joinedChat', (chatId) => {
+        console.log('✅ CONFIRMED JOINED CHAT ROOM:', chatId);
+        console.log('🔍 Socket rooms after join:', socket.rooms);
+      });
+      
+      // Also listen for any errors
+      socket.on('error', (error) => {
+        console.error('❌ Socket error:', error);
+      });
+      
+      // Fetch messages after joining
       fetchMessages(selectedChat._id);
+      
+      // Force a check of socket connection after a short delay
+      setTimeout(() => {
+        console.log('🔍 Socket connection check after 500ms:', socket.connected);
+        console.log('🔍 Socket rooms:', socket.rooms);
+      }, 500);
     }
   }, [selectedChat]);
 
@@ -352,19 +561,94 @@ const Chat = () => {
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!newMessage.trim() || !selectedChat || !socket) return;
+    if (!newMessage.trim() && !attachedFile) return;
+    if (!selectedChat || !socket) return;
 
+    let fileData = null;
+
+    // WhatsApp-style: Upload file first if attached
+    if (attachedFile) {
+      try {
+        console.log('📎 Uploading file first (WhatsApp-style):', attachedFile.name);
+        
+        const formData = new FormData();
+        formData.append('file', attachedFile);
+        
+        const response = await axios.post('http://localhost:5000/api/messages/upload', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+            Authorization: `Bearer ${token}`
+          }
+        });
+        
+        fileData = response.data;
+        console.log('✅ File uploaded successfully:', fileData);
+        
+      } catch (error) {
+        console.error('❌ File upload failed:', error);
+        toast.error('Failed to upload file');
+        return;
+      }
+    }
+
+    // Create message data with file URL (WhatsApp-style)
     const messageData = {
       content: newMessage,
       chatId: selectedChat._id,
-      sender: currentUser.id
+      sender: currentUser.id,
+      file: fileData // Contains URL and metadata
     };
 
-    // Send via socket
-    socket.emit('sendMessage', messageData);
+    console.log('📤 SENDING MESSAGE (WhatsApp-style):', messageData);
+    console.log('🔗 Socket connected:', socket.connected);
 
-    // Clear input immediately
-    setNewMessage('');
+    // Add message immediately to local state for instant display
+    const tempMessage = {
+      _id: `temp-${Date.now()}`,
+      content: newMessage,
+      sender: {
+        _id: currentUser.id,
+        name: currentUser.name,
+        avatar: currentUser.avatar
+      },
+      chat: selectedChat._id,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      file: fileData // WhatsApp-style - contains URL and metadata
+    };
+
+    console.log('➕ Adding message to local state:', tempMessage);
+    console.log('📊 Current messages count before adding:', messages.length);
+    
+    setMessages(prev => {
+      console.log('📊 Previous messages:', prev.length);
+      const newMessages = [...prev, tempMessage];
+      console.log('📊 New messages count after adding:', newMessages.length);
+      console.log('📊 Last message added:', newMessages[newMessages.length - 1]);
+      return newMessages;
+    });
+
+    // Send via Socket.io (WhatsApp-style - with file URL)
+    try {
+      socket.emit('sendMessage', messageData);
+      console.log('✅ Message sent via Socket.io');
+      
+      // Clear inputs
+      setNewMessage('');
+      setAttachedFile(null);
+      
+      toast.success('Message sent successfully');
+      
+    } catch (error) {
+      console.error('❌ Error sending message:', error);
+      toast.error('Failed to send message');
+    }
+    
+    // Add debugging to check if messages are rendered
+    setTimeout(() => {
+      console.log('🔍 Checking messages after 100ms:', messages.length);
+      console.log('🔍 Last message content:', messages[messages.length - 1]?.content);
+    }, 100);
   };
 
   return (
@@ -403,6 +687,7 @@ const Chat = () => {
                 onDeleteCurrentChat={handleDeleteChat}
                 onProfileUpdate={handleProfileUpdate}
                 onToggleTheme={toggleTheme}
+                onMarkAllAsRead={handleMarkAllAsRead}
               />
             </div>
           </div>
@@ -437,30 +722,58 @@ const Chat = () => {
           {chats.filter(chat => {
             const other = chat.participants?.find(p => p._id !== currentUser.id);
             return other?.name?.toLowerCase().includes(searchTerm.toLowerCase());
-          }).map(chat => {
-            const isGroup = chat.isGroupChat;
+          }).map((chat) => {
+            const isGroup = chat.isGroup || chat.chatName;
             const chatName = isGroup
               ? chat.chatName
               : chat.participants?.find(p => p._id !== currentUser.id)?.name;
+            const participant = chat.participants?.find(p => p._id !== currentUser.id);
+            const userStatus = isGroup ? null : userStatuses[participant?._id];
+            const isTyping = typingUsers[participant?._id];
+            const messageTime = chat.latestMessage?.createdAt 
+              ? new Date(chat.latestMessage.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              : '';
+            
             return (
               <div
                 key={chat._id}
-                onClick={() => setSelectedChat(chat)}
+                onClick={() => {
+                  console.log('🖱️ CHAT SELECTED:', chat._id);
+                  console.log('🖱️ CHAT OBJECT:', chat);
+                  console.log('🖱️ PREVIOUS SELECTED CHAT:', selectedChat?._id);
+                  
+                  // Mark messages as read when opening chat
+                  if (socket && chat._id !== selectedChat?._id) {
+                    console.log('📖 MARKING MESSAGES AS READ FOR CHAT:', chat._id);
+                    socket.emit('markMessagesAsRead', {
+                      chatId: chat._id,
+                      userId: currentUser.id
+                    });
+                    
+                    // Also update local state immediately
+                    setChats(prev => prev.map(c => 
+                      c._id === chat._id 
+                        ? { ...c, unreadCount: 0 }
+                        : c
+                    ));
+                  }
+                  
+                  setSelectedChat(chat);
+                }}
                 className={`p-3 rounded-2xl cursor-pointer hover:bg-gray-900 transition-all ${
                   selectedChat?._id === chat._id ? 'bg-gray-900 border border-gray-700' : ''
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 bg-gray-700 rounded-full flex items-center justify-center overflow-hidden">
-                    {isGroup ? (
-                      <span className="text-2xl">👥</span>
-                    ) : (
-                      (() => {
-                        const otherUser = chat.participants?.find(p => p._id !== currentUser.id);
-                        return otherUser?.avatar ? (
+                  <div className="relative">
+                    <div className="w-12 h-12 bg-gray-700 rounded-full flex items-center justify-center overflow-hidden">
+                      {isGroup ? (
+                        <span className="text-2xl">👥</span>
+                      ) : (
+                        participant?.avatar ? (
                           <img 
-                            src={otherUser.avatar.includes('http') ? `${otherUser.avatar}?t=${Date.now()}` : `http://localhost:5000/uploads/${otherUser.avatar}?t=${Date.now()}`}
-                            alt={otherUser.name || "Profile"} 
+                            src={participant.avatar.includes('http') ? participant.avatar : `http://localhost:5000/uploads/${participant.avatar}`}
+                            alt={participant.name}
                             className="w-full h-full object-cover"
                             onError={(e) => {
                               console.error('❌ Failed to load avatar:', e.target.src);
@@ -469,15 +782,48 @@ const Chat = () => {
                           />
                         ) : (
                           <span className="text-2xl">👤</span>
-                        );
-                      })()
+                        )
+                      )}
+                    </div>
+                    {/* Online status indicator */}
+                    {!isGroup && userStatus && (
+                      <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-gray-900 ${
+                        userStatus.isOnline ? 'bg-green-500' : 'bg-gray-500'
+                      }`} />
                     )}
                   </div>
+                  
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{chatName}</p>
-                    <p className="text-sm text-gray-400 truncate">
-                      {chat.latestMessage?.content || "Start chatting..."}
-                    </p>
+                    <div className="flex justify-between items-baseline">
+                      <p className="font-medium truncate">{chatName}</p>
+                      <span className="text-xs text-gray-500 ml-2">{messageTime}</span>
+                    </div>
+                    
+                    <div className="flex justify-between items-center">
+                      <p className="text-sm text-gray-400 truncate flex-1">
+                        {isTyping ? (
+                          <span className="text-green-400 italic">typing...</span>
+                        ) : (
+                          chat.latestMessage?.content || "Start chatting..."
+                        )}
+                      </p>
+                      
+                      <div className="flex items-center gap-2 ml-2">
+                        {/* Unread count badge */}
+                        {chat.unreadCount > 0 && (
+                          <div className="bg-green-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+                            {chat.unreadCount > 99 ? '99+' : chat.unreadCount}
+                          </div>
+                        )}
+                        
+                        {/* Status text for non-group chats */}
+                        {!isGroup && userStatus && !isTyping && (
+                          <span className="text-xs text-gray-500">
+                            {userStatus.isOnline ? 'online' : formatLastSeen(userStatus.lastSeen)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -523,28 +869,63 @@ const Chat = () => {
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-gray-950">
-              {messages.map((msg) => (
-                <div
-                  key={msg._id}
-                  id={`message-${msg._id}`}
-                  className={`flex ${msg.sender._id === currentUser.id ? 'justify-end' : 'justify-start'} group`}
-                >
-                  <div className={`max-w-[65%] px-5 py-3 rounded-3xl relative transition-all ${
+              {console.log('🎨 RENDERING MESSAGES:', messages.length) || messages.map((msg) => (
+                  <div
+                    key={msg._id}
+                    id={`message-${msg._id}`}
+                    className={`flex ${msg.sender._id === currentUser.id ? 'justify-end' : 'justify-start'} group`}
+                  >
+                  <div className={`max-w-[65%] px-5 py-3 rounded-3xl transition-all ${
                     msg.sender._id === currentUser.id ? 'bg-blue-600 text-white' : 'bg-gray-800'
                   }`}>
-                    <button
-                      onClick={() => toggleStarMessage(msg._id)}
-                      className={`absolute -top-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 ${
-                        msg.starred ? 'bg-yellow-500 text-gray-900' : 'bg-gray-700 text-gray-400 hover:text-yellow-400'
-                      }`}
-                      title={msg.starred ? "Unstar message" : "Star message"}
-                    >
-                      {msg.starred ? '⭐' : '☆'}
-                    </button>
-                    <p>{msg.content}</p>
+                    {/* Display message content */}
+                    {msg.content && <p>{msg.content}</p>}
+                    
+                    {/* Display file attachment */}
+                    {msg.file && msg.file.url && msg.file.name && (
+                      <div 
+                        className="mt-2 p-3 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600 transition-colors"
+                        onClick={() => window.open(`http://localhost:5000${msg.file.url}`, '_blank')}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="text-2xl">
+                            {msg.file.type?.startsWith('image/') ? '🖼️' : 
+                             msg.file.type?.startsWith('video/') ? '🎥' : 
+                             msg.file.type?.startsWith('audio/') ? '🎵' : 
+                             msg.file.type === 'application/pdf' ? '📄' : '📎'}
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-white truncate">
+                              {msg.file.name}
+                            </p>
+                            <p className="text-xs text-gray-400">
+                              {(msg.file.size / 1024).toFixed(1)} KB
+                            </p>
+                          </div>
+                        </div>
+                        
+                        {/* Image preview */}
+                        {msg.file.type?.startsWith('image/') && (
+                          <div className="mt-2">
+                            <img 
+                              src={`http://localhost:5000${msg.file.url}`}
+                              alt={msg.file.name}
+                              className="max-w-full h-auto rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                              onClick={() => window.open(`http://localhost:5000${msg.file.url}`, '_blank')}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
                     <p className="text-xs mt-1 opacity-75">
                       {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
+                    {typingUsers[msg.sender._id] && msg.sender._id !== currentUser.id && (
+                      <p className="text-xs mt-1 text-blue-400 animate-pulse">
+                        {msg.sender.name} is typing...
+                      </p>
+                    )}
                   </div>
                 </div>
               ))}
@@ -570,6 +951,17 @@ const Chat = () => {
             <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-800 bg-gray-900">
               <div className="flex gap-3 items-end">
                 <div className="relative">
+                  {/* Plus button for file attachment */}
+                  <label className="p-4 text-2xl text-gray-400 hover:text-blue-400 hover:bg-gray-700 rounded-full transition-all cursor-pointer" title="Attach file">
+                    📎
+                    <input
+                      type="file"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                      accept="image/*,video/*,.pdf,.doc,.doc,.txt"
+                    />
+                  </label>
+                  
                   <button
                     type="button"
                     onClick={() => setShowEmojiPicker(!showEmojiPicker)}
@@ -578,6 +970,24 @@ const Chat = () => {
                   >
                     😊
                   </button>
+                  
+                  {/* Show attached file preview */}
+                  {attachedFile && (
+                    <div className="absolute bottom-16 left-0 bg-gray-800 rounded-lg p-3 border border-gray-700 shadow-2xl">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-white">📎 {attachedFile.name}</span>
+                        <button
+                          onClick={removeAttachedFile}
+                          className="text-red-400 hover:text-red-300 text-sm"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        Size: {(attachedFile.size / 1024).toFixed(1)} KB
+                      </div>
+                    </div>
+                  )}
                   
                   {showEmojiPicker && (
                     <div className="absolute bottom-12 left-0 z-50">

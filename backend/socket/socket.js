@@ -8,16 +8,9 @@ let io;
 const initializeSocket = (server) => {
   io = new Server(server, {
     cors: {
-      origin: ["http://localhost:5173", "http://localhost:5174", "http://localhost:5175"],
+      origin: "http://localhost:5173",
       credentials: true
-    },
-    // Performance optimizations
-    transports: ['websocket', 'polling'], // Prefer WebSocket for faster communication
-    pingTimeout: 60000, // Increase timeout for better reliability
-    pingInterval: 25000, // Reduce ping frequency for less overhead
-    maxHttpBufferSize: 1e6, // Allow larger messages
-    // Enable compression for faster data transfer
-    compression: true
+    }
   });
 
   io.on('connection', (socket) => {
@@ -26,106 +19,232 @@ const initializeSocket = (server) => {
     socket.on('joinUser', async (userId) => {
       socket.userId = userId;
       socket.join(userId);
-      await User.findByIdAndUpdate(userId, { isOnline: true });
+      
+      // Update user status to online
+      await User.findByIdAndUpdate(userId, { 
+        isOnline: true,
+        lastSeen: new Date()
+      });
+      
+      // Broadcast online status to all users
+      io.emit('userStatusUpdate', {
+        userId: userId,
+        isOnline: true,
+        lastSeen: new Date()
+      });
+      
       console.log(`User ${userId} is online`);
     });
 
     socket.on('joinChat', (chatId) => {
-      try {
-        if (!chatId) {
-          console.error('❌ Invalid chat ID:', chatId);
-          return;
-        }
-
-        socket.join(chatId);
-        console.log(`✅ Joined chat room: ${chatId}`);
-        console.log('🔍 Socket rooms after join:', socket.rooms);
-      } catch (error) {
-        console.error('❌ Socket joinChat error:', error);
-        socket.emit('error', { message: 'Failed to join chat' });
-      }
+      socket.join(chatId);
+      console.log(`✅ Joined chat room: ${chatId}`);
     });
 
     socket.on('sendMessage', async (messageData) => {
       try {
-        if (!messageData || !messageData.content || !messageData.chatId || !messageData.sender) {
-          console.error('❌ Invalid message data:', messageData);
-          return;
+        console.log('� sendMessage received:', messageData);
+        
+        // Extract message data (WhatsApp-style - now includes file URL if present)
+        const { content, chatId, sender, file } = messageData;
+        
+        console.log('📤 Message data extracted:', {
+          content,
+          chatId,
+          sender,
+          hasFile: !!file
+        });
+        
+        if (file) {
+          console.log('� File data:', file);
         }
-
-        const { content, chatId, sender } = messageData;
+        
         const timestamp = new Date();
 
-        // Create message object for immediate broadcast
-        const messageForBroadcast = {
-          _id: `temp_${Date.now()}_${Math.random()}`, // Temporary ID
+        // Create instant message for immediate broadcast
+        const instantMessage = {
+          _id: `instant_${Date.now()}_${Math.random()}`,
           content,
           chat: chatId,
           sender: {
             _id: sender,
-            name: socket.handshake.auth.userName || 'Unknown User',
-            avatar: socket.handshake.auth.userAvatar || null
+            name: 'User', // Will be updated after population
+            avatar: null
           },
           createdAt: timestamp,
-          updatedAt: timestamp
+          updatedAt: timestamp,
+          file: file || null // WhatsApp-style - file contains URL and metadata
         };
 
-        // Broadcast immediately for real-time delivery
-        console.log(`📤 Broadcasting message instantly to room ${chatId}`);
-        io.to(chatId).emit('receiveMessage', messageForBroadcast);
+        // 4-WAY BROADCAST SYSTEM
+        console.log(`📤 4-WAY BROADCAST to room ${chatId}`);
+        console.log('📤 Message being broadcast:', instantMessage);
+        console.log('📤 File data in broadcast:', file);
+        console.log('📤 Message has file:', !!file);
+        if (file) {
+          console.log('📤 File URL:', file.url);
+          console.log('📤 File name:', file.name);
+        }
+        console.log('📤 Socket rooms:', socket.rooms);
+        console.log('📤 All sockets in room:', io.sockets.adapter.rooms.get(chatId));
+        
+        // 1. Broadcast to sender's chat window (receiveMessage)
+        io.to(chatId).emit('receiveMessage', instantMessage);
+        console.log('📤 1️⃣ SENDER CHAT WINDOW broadcast completed');
+        
+        // 2. Broadcast to sender's chat list (updateSenderChatList)
+        io.to(chatId).emit('updateSenderChatList', {
+          chatId: chatId,
+          latestMessage: instantMessage,
+          senderId: sender,
+          timestamp: timestamp,
+          isSender: true
+        });
+        console.log('📤 2️⃣ SENDER CHAT LIST broadcast completed');
+        
+        // 3. Broadcast to other user's chat list (updateOtherUserChatList) with unread count increment
+        socket.to(chatId).emit('updateOtherUserChatList', {
+          chatId: chatId,
+          latestMessage: instantMessage,
+          senderId: sender,
+          timestamp: timestamp,
+          isOtherUser: true,
+          unreadCountIncrement: 1 // Increment by 1 for recipient
+        });
+        console.log('📤 3️⃣ OTHER USER CHAT LIST broadcast completed');
+        
+        // 4. Broadcast to other user's chat window (receiveMessage for other user)
+        socket.to(chatId).emit('receiveMessage', instantMessage);
+        console.log('📤 4️⃣ OTHER USER CHAT WINDOW broadcast completed');
+        
+        // Also broadcast to all users for global chat list updates
+        io.emit('updateAllChatLists', {
+          chatId: chatId,
+          latestMessage: instantMessage,
+          senderId: sender,
+          timestamp: timestamp
+        });
+        console.log('📤 🌐 GLOBAL CHAT LISTS broadcast completed');
+        
+        console.log('📤 4-WAY BROADCAST COMPLETED - All directions covered');
 
-        // Save to database asynchronously (non-blocking)
-        Message.create({ sender, content, chat: chatId })
-          .then(async (savedMessage) => {
-            await Chat.findByIdAndUpdate(chatId, { latestMessage: savedMessage._id });
-            const populatedMessage = await savedMessage.populate('sender', 'name avatar');
-            
-            // Broadcast the confirmed message with real ID
-            console.log(`📤 Broadcasting confirmed message to room ${chatId}`);
-            io.to(chatId).emit('receiveMessage', populatedMessage);
-          })
-          .catch(error => {
-            console.error('❌ Database save error:', error);
-            // Optionally broadcast error to sender
-            socket.emit('messageError', { message: 'Message failed to save' });
+        // Save to database in background
+        try {
+          let messageData = { sender, content, chat: chatId };
+          
+          // Add file to message data if file exists (WhatsApp-style)
+          if (file) {
+            messageData.file = file;
+          }
+          
+          const message = await Message.create(messageData);
+          await Chat.findByIdAndUpdate(chatId, { latestMessage: message._id });
+          
+          const populatedMessage = await message.populate('sender', 'name avatar');
+          
+          // Add file information to populated message if file exists
+          if (file) {
+            populatedMessage.file = file;
+          }
+          
+          // Broadcast the confirmed message with real data
+          console.log(`📤 CONFIRMED 4-WAY BROADCAST to room ${chatId}`);
+          console.log('📤 Confirmed message being broadcast:', populatedMessage);
+          console.log('📤 Confirmed message has file:', !!populatedMessage.file);
+          if (populatedMessage.file) {
+            console.log('📤 Confirmed file URL:', populatedMessage.file.url);
+            console.log('📤 Confirmed file name:', populatedMessage.file.name);
+          }
+          
+          // 1. Broadcast to sender's chat window (receiveMessage)
+          io.to(chatId).emit('receiveMessage', populatedMessage);
+          console.log('📤 1️⃣ CONFIRMED SENDER CHAT WINDOW broadcast completed');
+          
+          // 2. Broadcast to sender's chat list (updateSenderChatList)
+          io.to(chatId).emit('updateSenderChatList', {
+            chatId: chatId,
+            latestMessage: populatedMessage,
+            senderId: sender,
+            timestamp: new Date(),
+            isSender: true
           });
-
+          console.log('📤 2️⃣ CONFIRMED SENDER CHAT LIST broadcast completed');
+          
+          // 3. Broadcast to other user's chat list (updateOtherUserChatList) - NO unread count increment for confirmed message
+          socket.to(chatId).emit('updateOtherUserChatList', {
+            chatId: chatId,
+            latestMessage: populatedMessage,
+            senderId: sender,
+            timestamp: new Date(),
+            isOtherUser: true
+            // No unreadCountIncrement - already incremented in instant message
+          });
+          console.log('📤 3️⃣ CONFIRMED OTHER USER CHAT LIST broadcast completed');
+          
+          // 4. Broadcast to other user's chat window (receiveMessage for other user)
+          socket.to(chatId).emit('receiveMessage', populatedMessage);
+          console.log('📤 4️⃣ CONFIRMED OTHER USER CHAT WINDOW broadcast completed');
+          
+          // Also broadcast to all users for global chat list updates
+          io.emit('updateAllChatLists', {
+            chatId: chatId,
+            latestMessage: populatedMessage,
+            senderId: sender,
+            timestamp: new Date()
+          });
+          console.log('📤 🌐 CONFIRMED GLOBAL CHAT LISTS broadcast completed');
+          
+          console.log('📤 CONFIRMED 4-WAY BROADCAST COMPLETED');
+        } catch (dbError) {
+          console.error('Database save error:', dbError);
+          // Keep the instant message even if DB fails
+        }
       } catch (error) {
-        console.error('❌ Socket sendMessage error:', error);
-        socket.emit('error', { message: 'Failed to send message' });
+        console.error('Socket sendMessage error:', error);
       }
     });
 
     socket.on('typing', ({ chatId, userId, isTyping }) => {
-      try {
-        if (!chatId || !userId || typeof isTyping !== 'boolean') {
-          console.error('❌ Invalid typing data:', { chatId, userId, isTyping });
-          return;
-        }
-
-        console.log('📝 Typing event received:', { chatId, userId, isTyping, socketId: socket.id });
-        socket.to(chatId).emit('userTyping', { chatId, userId, isTyping });
-        console.log('📤 Broadcasted typing to room:', chatId);
-      } catch (error) {
-        console.error('❌ Socket typing error:', error);
-        socket.emit('error', { message: 'Failed to broadcast typing' });
-      }
+      socket.to(chatId).emit('userTyping', { chatId, userId, isTyping });
     });
 
-    socket.on('profileUpdated', (userData) => {
-      // Broadcast profile update to all connected users
-      socket.broadcast.emit('userProfileUpdated', userData);
+    // Handle marking messages as read
+    socket.on('markMessagesAsRead', async ({ chatId, userId }) => {
+      try {
+        console.log(`📖 Marking messages as read for chat ${chatId} by user ${userId}`);
+        
+        // Update unread count in database (you'll need to implement this model)
+        // For now, broadcast that messages are read
+        socket.to(chatId).emit('messagesRead', {
+          chatId: chatId,
+          userId: userId,
+          unreadCount: 0
+        });
+        
+        console.log('📖 Messages marked as read broadcast completed');
+      } catch (error) {
+        console.error('Error marking messages as read:', error);
+      }
     });
 
     socket.on('disconnect', async () => {
       if (socket.userId) {
-        await User.findByIdAndUpdate(socket.userId, { isOnline: false });
+        const lastSeen = new Date();
+        await User.findByIdAndUpdate(socket.userId, { 
+          isOnline: false,
+          lastSeen: lastSeen
+        });
+        
+        // Broadcast offline status to all users
+        io.emit('userStatusUpdate', {
+          userId: socket.userId,
+          isOnline: false,
+          lastSeen: lastSeen
+        });
       }
       console.log('🔴 User disconnected');
     });
   });
 };
 
-const getIO = () => io;
-
-module.exports = { initializeSocket, getIO };
+module.exports = { initializeSocket };

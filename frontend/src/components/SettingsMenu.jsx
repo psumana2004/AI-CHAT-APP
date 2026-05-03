@@ -8,7 +8,8 @@ const SettingsMenu = ({
   currentChatId, 
   onDeleteCurrentChat = () => {}, 
   onProfileUpdate = () => {}, 
-  onToggleTheme = () => {} 
+  onToggleTheme = () => {},
+  onMarkAllAsRead = () => {}
 }) => {
   
   const [open, setOpen] = useState(false);
@@ -32,6 +33,13 @@ const SettingsMenu = ({
     }
     if (window.confirm("Delete this chat permanently?")) {
       onDeleteCurrentChat(currentChatId);
+      setOpen(false);
+    }
+  };
+
+  const handleMarkAllAsRead = () => {
+    if (window.confirm("Mark all messages as read?")) {
+      onMarkAllAsRead();
       setOpen(false);
     }
   };
@@ -120,6 +128,13 @@ const SettingsMenu = ({
                 {localStorage.getItem('theme') === 'dark' ? '🌙 Dark' : 
                  localStorage.getItem('theme') === 'light' ? '☀️ Light' : '🌊 Ocean'}
               </span>
+            </button>
+
+            <button
+              onClick={handleMarkAllAsRead}
+              className="w-full text-left px-4 py-3 hover:bg-gray-800 flex items-center gap-3"
+            >
+              ✅ Mark All as Read
             </button>
 
             <div className="border-t border-gray-700 my-1" />
