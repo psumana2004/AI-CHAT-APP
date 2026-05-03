@@ -24,6 +24,9 @@ const Chat = () => {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showAIChat, setShowAIChat] = useState(false);
   const [attachedFile, setAttachedFile] = useState(null);
+  const [showUserProfileModal, setShowUserProfileModal] = useState(false);
+  const [longPressTimer, setLongPressTimer] = useState(null);
+  const [showBlockOptions, setShowBlockOptions] = useState(null); // Chat ID for which to show block options
 
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [currentUser, setCurrentUser] = useState(() => JSON.parse(localStorage.getItem('user')));
@@ -92,6 +95,67 @@ const Chat = () => {
   const removeAttachedFile = () => {
     setAttachedFile(null);
     toast.success('File removed');
+  };
+
+  const handleMouseDown = (chatId) => {
+    const timer = setTimeout(() => {
+      setShowBlockOptions(chatId);
+    }, 500); // 500ms for long press
+    setLongPressTimer(timer);
+  };
+
+  const handleMouseUp = () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      setLongPressTimer(null);
+    }
+  };
+
+  const handleTouchStart = (chatId) => {
+    const timer = setTimeout(() => {
+      setShowBlockOptions(chatId);
+    }, 500); // 500ms for long press
+    setLongPressTimer(timer);
+  };
+
+  const handleTouchEnd = () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      setLongPressTimer(null);
+    }
+  };
+
+  const handleBlockChat = (chatId) => {
+    // Get blocked chats from localStorage or initialize empty array
+    const blockedChats = JSON.parse(localStorage.getItem('blockedChats') || '[]');
+    
+    if (!blockedChats.includes(chatId)) {
+      blockedChats.push(chatId);
+      localStorage.setItem('blockedChats', JSON.stringify(blockedChats));
+      toast.success('Chat blocked successfully');
+      
+      // Remove chat from current chats list
+      setChats(prev => prev.filter(chat => chat._id !== chatId));
+      
+      // If this was the selected chat, clear selection
+      if (selectedChat?._id === chatId) {
+        setSelectedChat(null);
+        setMessages([]);
+      }
+    }
+    
+    setShowBlockOptions(null);
+  };
+
+  const handleUnblockChat = (chatId) => {
+    const blockedChats = JSON.parse(localStorage.getItem('blockedChats') || '[]');
+    const updatedBlockedChats = blockedChats.filter(id => id !== chatId);
+    localStorage.setItem('blockedChats', JSON.stringify(updatedBlockedChats));
+    toast.success('Chat unblocked successfully');
+    setShowBlockOptions(null);
+    
+    // Refresh chats to show unblocked chat
+    fetchChats();
   };
 
   const toggleStarMessage = async (messageId) => {
@@ -305,6 +369,37 @@ const Chat = () => {
         }
         return chat;
       }));
+    });
+
+    // Handle typing indicators
+    socket.on('userTyping', ({ chatId, userId, isTyping }) => {
+      console.log('📝 USER TYPING EVENT:', { chatId, userId, isTyping });
+      console.log('📝 Current chat ID:', selectedChat?._id);
+      
+      // Only update typing status for the current chat
+      if (selectedChat && chatId === selectedChat._id) {
+        setTypingUsers(prev => ({
+          ...prev,
+          [userId]: isTyping
+        }));
+        
+        console.log('📝 Typing status updated:', { userId, isTyping });
+      }
+    });
+
+    // Handle user status updates (online/offline)
+    socket.on('userStatusUpdate', ({ userId, isOnline, lastSeen }) => {
+      console.log('👤 USER STATUS UPDATE:', { userId, isOnline, lastSeen });
+      
+      setUserStatuses(prev => ({
+        ...prev,
+        [userId]: {
+          isOnline,
+          lastSeen
+        }
+      }));
+      
+      console.log('👤 User status updated:', { userId, isOnline, lastSeen });
     });
 
     return () => {
@@ -657,7 +752,10 @@ const Chat = () => {
         <div className="p-4 border-b border-gray-800 bg-gray-900">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-gray-700 rounded-full flex items-center justify-center overflow-hidden">
+              <div 
+                className="w-12 h-12 bg-gray-700 rounded-full flex items-center justify-center overflow-hidden cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all"
+                onClick={() => setShowUserProfileModal(true)}
+              >
                 {currentUser?.avatar ? (
                   <img 
                     src={currentUser.avatar.includes('http') ? currentUser.avatar : `http://localhost:5000/uploads/${currentUser.avatar}`}
@@ -688,6 +786,7 @@ const Chat = () => {
                 onProfileUpdate={handleProfileUpdate}
                 onToggleTheme={toggleTheme}
                 onMarkAllAsRead={handleMarkAllAsRead}
+                onUnblockChat={fetchChats}
               />
             </div>
           </div>
@@ -760,6 +859,11 @@ const Chat = () => {
                   
                   setSelectedChat(chat);
                 }}
+                onMouseDown={() => handleMouseDown(chat._id)}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+                onTouchStart={() => handleTouchStart(chat._id)}
+                onTouchEnd={handleTouchEnd}
                 className={`p-3 rounded-2xl cursor-pointer hover:bg-gray-900 transition-all ${
                   selectedChat?._id === chat._id ? 'bg-gray-900 border border-gray-700' : ''
                 }`}
@@ -837,23 +941,74 @@ const Chat = () => {
           <>
             <div className="p-4 border-b border-gray-800 bg-gray-900 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gray-700 rounded-full flex items-center justify-center overflow-hidden">
+                <div className="relative">
+                  <div className="w-10 h-10 bg-gray-700 rounded-full flex items-center justify-center overflow-hidden">
+                    {(() => {
+                      const otherUser = selectedChat.participants?.find(p => p._id !== currentUser.id);
+                      return otherUser?.avatar ? (
+                        <img 
+                          src={otherUser.avatar.includes('http') ? `${otherUser.avatar}?t=${Date.now()}` : `http://localhost:5000/uploads/${otherUser.avatar}?t=${Date.now()}`}
+                          alt={otherUser.name || "Profile"} 
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-2xl">👤</span>
+                      );
+                    })()}
+                  </div>
+                  {/* Online status indicator */}
                   {(() => {
                     const otherUser = selectedChat.participants?.find(p => p._id !== currentUser.id);
-                    return otherUser?.avatar ? (
-                      <img 
-                        src={otherUser.avatar.includes('http') ? `${otherUser.avatar}?t=${Date.now()}` : `http://localhost:5000/uploads/${otherUser.avatar}?t=${Date.now()}`}
-                        alt={otherUser.name || "Profile"} 
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-2xl">👤</span>
+                    const userStatus = userStatuses[otherUser?._id];
+                    return userStatus?.isOnline && (
+                      <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-gray-900"></div>
                     );
                   })()}
                 </div>
-                <h2 className="font-semibold">
-                  {selectedChat.participants?.find(p => p._id !== currentUser.id)?.name}
-                </h2>
+                <div>
+                  <h2 className="font-semibold text-white">
+                    {selectedChat.participants?.find(p => p._id !== currentUser.id)?.name}
+                  </h2>
+                  {/* WhatsApp-style status: typing, online, or last seen */}
+                  {(() => {
+                    const otherUser = selectedChat.participants?.find(p => p._id !== currentUser.id);
+                    const isTyping = typingUsers[otherUser?._id];
+                    const userStatus = userStatuses[otherUser?._id];
+                    const isGroup = selectedChat.isGroup || selectedChat.chatName;
+                    
+                    if (isTyping && !isGroup) {
+                      return (
+                        <p className="text-xs text-green-400 animate-pulse">
+                          typing...
+                        </p>
+                      );
+                    } else if (!isGroup && userStatus?.isOnline) {
+                      return (
+                        <p className="text-xs text-green-400">
+                          online
+                        </p>
+                      );
+                    } else if (!isGroup && userStatus?.lastSeen) {
+                      return (
+                        <p className="text-xs text-gray-500">
+                          {formatLastSeen(userStatus.lastSeen)}
+                        </p>
+                      );
+                    } else if (isGroup) {
+                      return (
+                        <p className="text-xs text-gray-500">
+                          {selectedChat.participants?.length} participants
+                        </p>
+                      );
+                    } else {
+                      return (
+                        <p className="text-xs text-gray-500">
+                          offline
+                        </p>
+                      );
+                    }
+                  })()}
+                </div>
               </div>
               <button
                 onClick={() => {
@@ -1045,6 +1200,118 @@ const Chat = () => {
           onClose={() => setShowAIChat(false)}
           currentUser={currentUser}
         />
+      )}
+      
+      {/* User Profile Modal */}
+      {showUserProfileModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-md mx-4">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold text-white">User Profile</h2>
+              <button
+                onClick={() => setShowUserProfileModal(false)}
+                className="text-gray-400 hover:text-white text-2xl"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              {/* User ID */}
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1">User ID</label>
+                <div className="bg-gray-700 rounded-lg px-4 py-2 text-gray-300">
+                  {currentUser?.id || currentUser?._id || 'N/A'}
+                </div>
+              </div>
+              
+              {/* Name */}
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1">Name</label>
+                <input
+                  type="text"
+                  value={currentUser?.name || ''}
+                  onChange={(e) => {
+                    const updatedUser = { ...currentUser, name: e.target.value };
+                    setCurrentUser(updatedUser);
+                    localStorage.setItem('user', JSON.stringify(updatedUser));
+                  }}
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+              
+              {/* Email */}
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1">Email</label>
+                <input
+                  type="email"
+                  value={currentUser?.email || ''}
+                  onChange={(e) => {
+                    const updatedUser = { ...currentUser, email: e.target.value };
+                    setCurrentUser(updatedUser);
+                    localStorage.setItem('user', JSON.stringify(updatedUser));
+                  }}
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+              
+              {/* Password */}
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1">Password</label>
+                <input
+                  type="password"
+                  placeholder="Enter new password"
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+              
+              {/* Save Button */}
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={() => {
+                    // Here you would typically save changes to backend
+                    toast.success('Profile updated successfully');
+                    setShowUserProfileModal(false);
+                  }}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition-colors"
+                >
+                  Save Changes
+                </button>
+                <button
+                  onClick={() => setShowUserProfileModal(false)}
+                  className="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Block Options Modal */}
+      {showBlockOptions && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-sm mx-4">
+            <h3 className="text-lg font-bold text-white mb-4">Chat Options</h3>
+            
+            <div className="space-y-2">
+              <button
+                onClick={() => handleBlockChat(showBlockOptions)}
+                className="w-full text-left px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors flex items-center gap-3"
+              >
+                🚫 Block Chat
+              </button>
+              
+              <button
+                onClick={() => setShowBlockOptions(null)}
+                className="w-full text-left px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

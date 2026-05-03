@@ -9,14 +9,17 @@ const SettingsMenu = ({
   onDeleteCurrentChat = () => {}, 
   onProfileUpdate = () => {}, 
   onToggleTheme = () => {},
-  onMarkAllAsRead = () => {}
+  onMarkAllAsRead = () => {},
+  onUnblockChat = () => {}
 }) => {
   
   const [open, setOpen] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showBlockedUsers, setShowBlockedUsers] = useState(false);
   const [name, setName] = useState(user?.name || "");
   const [avatar, setAvatar] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [blockedChats, setBlockedChats] = useState([]);
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -31,9 +34,29 @@ const SettingsMenu = ({
       toast.error("No chat selected");
       return;
     }
-    if (window.confirm("Delete this chat permanently?")) {
-      onDeleteCurrentChat(currentChatId);
+    
+    if (window.confirm("Are you sure you want to delete this chat? This action cannot be undone.")) {
+      onDeleteCurrentChat();
       setOpen(false);
+    }
+  };
+
+  const handleShowBlockedUsers = () => {
+    const blocked = JSON.parse(localStorage.getItem('blockedChats') || '[]');
+    setBlockedChats(blocked);
+    setShowBlockedUsers(true);
+    setOpen(false);
+  };
+
+  const handleUnblockUser = (chatId) => {
+    const updatedBlockedChats = blockedChats.filter(id => id !== chatId);
+    setBlockedChats(updatedBlockedChats);
+    localStorage.setItem('blockedChats', JSON.stringify(updatedBlockedChats));
+    toast.success('User unblocked successfully');
+    
+    // Call parent function to refresh chats
+    if (onUnblockChat) {
+      onUnblockChat();
     }
   };
 
@@ -137,6 +160,13 @@ const SettingsMenu = ({
               ✅ Mark All as Read
             </button>
 
+            <button
+              onClick={handleShowBlockedUsers}
+              className="w-full text-left px-4 py-3 hover:bg-gray-800 flex items-center gap-3"
+            >
+              🚫 Blocked Users
+            </button>
+
             <div className="border-t border-gray-700 my-1" />
 
             <button
@@ -222,6 +252,60 @@ const SettingsMenu = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Blocked Users Modal */}
+      {showBlockedUsers && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[100]">
+          <div className="bg-gray-900 p-6 rounded-3xl w-full max-w-md max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-white">Blocked Users</h2>
+              <button
+                onClick={() => setShowBlockedUsers(false)}
+                className="text-gray-400 hover:text-white text-2xl"
+              >
+                ×
+              </button>
+            </div>
+            
+            {blockedChats.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-gray-400">No blocked users found</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {blockedChats.map((chatId) => (
+                  <div key={chatId} className="flex items-center justify-between p-3 bg-gray-800 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-gray-700 rounded-full flex items-center justify-center">
+                        👤
+                      </div>
+                      <div>
+                        <p className="text-white font-medium">User {chatId.slice(-6)}</p>
+                        <p className="text-gray-400 text-sm">ID: {chatId}</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleUnblockUser(chatId)}
+                      className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+                    >
+                      Unblock
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            
+            <div className="mt-6">
+              <button
+                onClick={() => setShowBlockedUsers(false)}
+                className="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-medium transition-colors"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
