@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { toast } from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
-import API_ENDPOINTS from '../config/api';
+import toast from 'react-hot-toast';
 
 const StarredMessages = () => {
   const [starredMessages, setStarredMessages] = useState([]);
@@ -16,7 +15,7 @@ const StarredMessages = () => {
 
   const fetchStarredMessages = async () => {
     try {
-      const response = await axios.get(API_ENDPOINTS.GET_STARRED_MESSAGES, {
+      const response = await axios.get('http://localhost:5000/api/messages/starred', {
         headers: { Authorization: `Bearer ${token}` }
       });
       setStarredMessages(response.data);
@@ -30,7 +29,7 @@ const StarredMessages = () => {
 
   const toggleStarMessage = async (messageId) => {
     try {
-      await axios.patch(API_ENDPOINTS.STAR_MESSAGE(messageId), {}, {
+      await axios.patch(`http://localhost:5000/api/messages/${messageId}/star`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
@@ -129,7 +128,7 @@ const StarredMessages = () => {
                     <div className="w-10 h-10 bg-gray-700 rounded-full flex items-center justify-center text-sm">
                       {message.sender.avatar ? (
                         <img
-                          src={message.sender.avatar.includes('http') ? message.sender.avatar : `${API_ENDPOINTS.UPLOADS_URL}/${message.sender.avatar}`}
+                          src={message.sender.avatar.includes('http') ? message.sender.avatar : `http://localhost:5000/uploads/${message.sender.avatar}`}
                           alt={message.sender.name}
                           className="w-full h-full rounded-full object-cover"
                         />

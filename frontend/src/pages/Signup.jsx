@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import axios from 'axios';
-import { toast } from 'react-hot-toast';
 import { useNavigate, Link } from 'react-router-dom';
-import API_ENDPOINTS from '../config/api';
+import axios from 'axios';
+import toast from 'react-hot-toast';
 
 const Signup = () => {
   const [name, setName] = useState('');
@@ -16,14 +15,14 @@ const Signup = () => {
     setLoading(true);
 
     try {
-      const { data } = await axios.post(API_ENDPOINTS.REGISTER, {
+      const { data } = await axios.post('http://localhost:5000/api/auth/register', {
         name,
         email,
         password
       });
 
       // After successful registration, automatically log in the user
-      const loginResponse = await axios.post(API_ENDPOINTS.LOGIN, {
+      const loginResponse = await axios.post('http://localhost:5000/api/auth/login', {
         email,
         password
       });

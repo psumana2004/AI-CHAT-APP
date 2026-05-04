@@ -1,8 +1,7 @@
 import { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
-import { toast } from 'react-hot-toast';
-import { useNavigate } from 'react-router-dom';
-import API_ENDPOINTS from '../config/api';
+import toast from 'react-hot-toast';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -15,7 +14,7 @@ const Login = () => {
     setLoading(true);
 
     try {
-      const { data } = await axios.post(API_ENDPOINTS.LOGIN, {
+      const { data } = await axios.post('http://localhost:5000/api/auth/login', {
         email,
         password
       });

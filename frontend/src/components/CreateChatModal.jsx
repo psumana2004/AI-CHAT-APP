@@ -1,7 +1,6 @@
-import { useState } from 'react';
-import axios from 'axios';
-import { toast } from 'react-hot-toast';
-import API_ENDPOINTS from '../config/api';
+import { useState } from "react";
+import axios from "axios";
+import toast from "react-hot-toast";
 
 const CreateChatModal = ({ show, setShow, token, setSelectedChat, fetchChats }) => {
   const [userId, setUserId] = useState("");
@@ -11,7 +10,7 @@ const CreateChatModal = ({ show, setShow, token, setSelectedChat, fetchChats }) 
 
     try {
       const { data } = await axios.post(
-        API_ENDPOINTS.CREATE_CHAT,
+        "http://localhost:5000/api/chat",
         { userId },
         {
           headers: { Authorization: `Bearer ${token}` },

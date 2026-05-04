@@ -1,7 +1,6 @@
-import { useState } from 'react';
-import axios from 'axios';
-import { toast } from 'react-hot-toast';
-import API_ENDPOINTS from '../config/api';
+import { useState } from "react";
+import axios from "axios";
+import toast from "react-hot-toast";
 
 const GroupModal = ({ show, setShow, token, fetchChats }) => {
   const [groupName, setGroupName] = useState("");
@@ -16,7 +15,7 @@ const GroupModal = ({ show, setShow, token, fetchChats }) => {
       const usersArray = users.split(",").map(u => u.trim()).filter(u => u);
       
       const { data } = await axios.post(
-        API_ENDPOINTS.CREATE_GROUP_CHAT,
+        "http://localhost:5000/api/chat/group",
         {
           name: groupName,
           users: usersArray

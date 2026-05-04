@@ -1,8 +1,5 @@
 import { useState } from "react";
 import axios from "axios";
-import { toast } from "react-hot-toast";
-import { useNavigate } from "react-router-dom";
-import API_ENDPOINTS from "../config/api";
 
 const AIPage = () => {
   const [input, setInput] = useState("");
@@ -17,7 +14,7 @@ const AIPage = () => {
     setMessages(prev => [...prev, userMsg]);
 
     const { data } = await axios.post(
-      API_ENDPOINTS.AI_ASK,
+      "http://localhost:5000/api/ai/ask",
       { message: input },
       { headers: { Authorization: `Bearer ${token}` } }
     );
