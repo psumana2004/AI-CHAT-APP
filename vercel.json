@@ -6,7 +6,7 @@
     "rewrites": [
         {
             "source": "/api/:path*",
-            "destination": "https://ai-chat-app-lmqq.onrender.com"
+            "destination": "https://ai-chat-app-lmqq.onrender.com/api/:path*"
         }
     ]
 }
