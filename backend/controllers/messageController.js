@@ -9,6 +9,17 @@ const sendMessage = async (req, res) => {
       return res.status(400).json({ message: "Content and chatId are required" });
     }
 
+    // ✅ SECURITY: Verify user is participant in this chat
+    const chat = await Chat.findOne({
+      _id: chatId,
+      participants: req.user._id
+    });
+
+    if (!chat) {
+      console.log('🚫 Unauthorized message send attempt to chat:', chatId, 'by user:', req.user._id);
+      return res.status(403).json({ message: "Access denied - you are not a participant in this chat" });
+    }
+
     const message = await Message.create({
       sender: req.user._id,
       content,
@@ -21,8 +32,10 @@ const sendMessage = async (req, res) => {
 
     const populatedMessage = await message.populate('sender', 'name avatar');
 
+    console.log('📤 Message sent to chat:', chatId, 'by user:', req.user._id);
     res.status(201).json(populatedMessage);
   } catch (error) {
+    console.error('❌ Error sending message:', error);
     res.status(500).json({ message: error.message });
   }
 };
@@ -31,11 +44,23 @@ const getMessages = async (req, res) => {
   try {
     const { chatId } = req.params;
 
+    // ✅ SECURITY: Verify user is participant in this chat
+    const chat = await Chat.findOne({
+      _id: chatId,
+      participants: req.user._id
+    });
+
+    if (!chat) {
+      console.log('🚫 Unauthorized access attempt to chat:', chatId, 'by user:', req.user._id);
+      return res.status(403).json({ message: "Access denied - you are not a participant in this chat" });
+    }
+
     const messages = await Message.find({ chat: chatId })
       .populate('sender', 'name avatar')
       .sort({ createdAt: 1 });
 
     console.log('📋 Fetching messages for chat:', chatId);
+    console.log('📋 User authorized:', req.user._id);
     console.log('📋 Messages found:', messages.length);
     console.log('📋 Messages with files:', messages.filter(m => m.file && m.file.url).length);
 

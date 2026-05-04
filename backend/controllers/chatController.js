@@ -100,17 +100,27 @@ const createGroupChat = async (req, res) => {
 // Delete Chat
 const deleteChat = async (req, res) => {
   try {
-    const chat = await Chat.findByIdAndDelete(req.params.chatId);
+    // ✅ SECURITY: Verify user is participant in this chat
+    const chat = await Chat.findOne({
+      _id: req.params.chatId,
+      participants: req.user._id
+    });
 
     if (!chat) {
-      return res.status(404).json({ message: "Chat not found" });
+      console.log('🚫 Unauthorized chat deletion attempt:', req.params.chatId, 'by user:', req.user._id);
+      return res.status(403).json({ message: "Access denied - you are not a participant in this chat" });
     }
+
+    // Delete the chat
+    await Chat.findByIdAndDelete(req.params.chatId);
 
     // Also delete all messages in this chat
     await Message.deleteMany({ chat: req.params.chatId });
 
+    console.log('🗑️ Chat deleted:', req.params.chatId, 'by user:', req.user._id);
     res.json({ message: "Chat deleted successfully" });
   } catch (error) {
+    console.error('❌ Error deleting chat:', error);
     res.status(500).json({ message: error.message });
   }
 };
