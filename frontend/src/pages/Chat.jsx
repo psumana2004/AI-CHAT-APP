@@ -1,14 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import io from 'socket.io-client';
-import EmojiPicker from 'emoji-picker-react';
+import { io } from 'socket.io-client';
 import { toast } from 'react-hot-toast';
+import CreateChatModal from '../components/CreateChatModal';
+import GroupModal from '../components/GroupModal';
+import SettingsMenu from '../components/SettingsMenu';
 import AIChat from '../components/AIChat';
-import GroupModal from "../components/GroupModal";
-import CreateChatModal from "../components/CreateChatModal";
-import SettingsMenu from "../components/SettingsMenu";
-
-let socket;
+import EmojiPicker from 'emoji-picker-react';
+import API_ENDPOINTS from '../config/api';
 
 const Chat = () => {
   const [chats, setChats] = useState([]);
@@ -160,7 +159,7 @@ const Chat = () => {
 
   const toggleStarMessage = async (messageId) => {
     try {
-      const response = await axios.patch(`http://localhost:5000/api/messages/${messageId}/star`, {}, {
+      const response = await axios.patch(API_ENDPOINTS.STAR_MESSAGE(messageId), {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
@@ -177,7 +176,7 @@ const Chat = () => {
   useEffect(() => {
     if (!currentUser?.id) return;
     
-    socket = io('http://localhost:5000');
+    socket = io(API_ENDPOINTS.SOCKET_URL);
 
     socket.on('connect', () => {
       console.log('🟢 SOCKET CONNECTED:', socket.id);
@@ -409,7 +408,7 @@ const Chat = () => {
 
   const fetchChats = async () => {
     try {
-      const { data } = await axios.get('http://localhost:5000/api/chat', {
+      const { data } = await axios.get(API_ENDPOINTS.GET_CHATS, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setChats(data);
@@ -420,7 +419,7 @@ const Chat = () => {
 
   const fetchMessages = async (chatId) => {
     try {
-      const { data } = await axios.get(`http://localhost:5000/api/chat/${chatId}`, {
+      const { data } = await axios.get(API_ENDPOINTS.GET_CHAT_MESSAGES(chatId), {
         headers: { Authorization: `Bearer ${token}` }
       });
       setMessages(data);
@@ -469,7 +468,7 @@ const Chat = () => {
 
     try {
       const res = await axios.delete(
-        `http://localhost:5000/api/chat/${chatId}`,
+        API_ENDPOINTS.DELETE_CHAT(chatId),
         {
           headers: {
             Authorization: `Bearer ${token}`
@@ -601,7 +600,7 @@ const Chat = () => {
   const createNewChat = async () => {
     if (!userIdInput) return toast.error("Enter User ID");
     try {
-      const { data } = await axios.post('http://localhost:5000/api/chat', 
+      const { data } = await axios.post(API_ENDPOINTS.CREATE_CHAT, 
         { userId: userIdInput },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -669,7 +668,7 @@ const Chat = () => {
         const formData = new FormData();
         formData.append('file', attachedFile);
         
-        const response = await axios.post('http://localhost:5000/api/messages/upload', formData, {
+        const response = await axios.post(API_ENDPOINTS.UPLOAD_FILE, formData, {
           headers: {
             'Content-Type': 'multipart/form-data',
             Authorization: `Bearer ${token}`
@@ -758,7 +757,7 @@ const Chat = () => {
               >
                 {currentUser?.avatar ? (
                   <img 
-                    src={currentUser.avatar.includes('http') ? currentUser.avatar : `http://localhost:5000/uploads/${currentUser.avatar}`}
+                    src={currentUser.avatar.includes('http') ? currentUser.avatar : `${API_ENDPOINTS.UPLOADS_URL}/${currentUser.avatar}`}
                     alt="Profile" 
                     className="w-full h-full object-cover"
                   />
@@ -881,7 +880,7 @@ const Chat = () => {
                       ) : (
                         participant?.avatar ? (
                           <img 
-                            src={participant.avatar.includes('http') ? participant.avatar : `http://localhost:5000/uploads/${participant.avatar}`}
+                            src={participant.avatar.includes('http') ? participant.avatar : `${API_ENDPOINTS.UPLOADS_URL}/${participant.avatar}`}
                             alt={participant.name}
                             className="w-full h-full object-cover"
                             onError={(e) => {
@@ -956,7 +955,7 @@ const Chat = () => {
                         const otherUser = selectedChat.participants?.find(p => p._id !== currentUser.id);
                         return otherUser?.avatar ? (
                           <img 
-                            src={otherUser.avatar.includes('http') ? `${otherUser.avatar}?t=${Date.now()}` : `http://localhost:5000/uploads/${otherUser.avatar}?t=${Date.now()}`}
+                            src={otherUser.avatar.includes('http') ? `${otherUser.avatar}?t=${Date.now()}` : `${API_ENDPOINTS.UPLOADS_URL}/${otherUser.avatar}?t=${Date.now()}`}
                             alt={otherUser.name || "Profile"} 
                             className="w-full h-full object-cover"
                           />
@@ -1055,7 +1054,7 @@ const Chat = () => {
                     {msg.file && msg.file.url && msg.file.name && (
                       <div 
                         className="mt-2 p-3 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600 transition-colors"
-                        onClick={() => window.open(`http://localhost:5000${msg.file.url}`, '_blank')}
+                        onClick={() => window.open(API_ENDPOINTS.FILE_URL(msg.file.url), '_blank')}
                       >
                         <div className="flex items-center gap-3">
                           <div className="text-2xl">
@@ -1078,10 +1077,10 @@ const Chat = () => {
                         {msg.file.type?.startsWith('image/') && (
                           <div className="mt-2">
                             <img 
-                              src={`http://localhost:5000${msg.file.url}`}
+                              src={API_ENDPOINTS.FILE_URL(msg.file.url)}
                               alt={msg.file.name}
                               className="max-w-full h-auto rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                              onClick={() => window.open(`http://localhost:5000${msg.file.url}`, '_blank')}
+                              onClick={() => window.open(API_ENDPOINTS.FILE_URL(msg.file.url), '_blank')}
                             />
                           </div>
                         )}

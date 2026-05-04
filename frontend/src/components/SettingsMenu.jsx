@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import axios from "axios";
+import API_ENDPOINTS from '../config/api';
 
 const SettingsMenu = ({ 
   user, 
@@ -96,7 +97,7 @@ const SettingsMenu = ({
       }
       
       const { data } = await axios.put(
-        "http://localhost:5000/api/users/profile",
+        API_ENDPOINTS.UPDATE_PROFILE,
         formData,
         {
           headers: {
