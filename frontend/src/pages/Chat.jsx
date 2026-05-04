@@ -819,8 +819,13 @@ const Chat = () => {
 
         <div className="flex-1 overflow-y-auto p-3 space-y-1">
           {chats.filter(chat => {
-            const other = chat.participants?.find(p => p._id !== currentUser.id);
-            return other?.name?.toLowerCase().includes(searchTerm.toLowerCase());
+            const isGroup = chat.isGroup || chat.chatName;
+            if (isGroup) {
+              return chat.chatName?.toLowerCase().includes(searchTerm.toLowerCase());
+            } else {
+              const other = chat.participants?.find(p => p._id !== currentUser.id);
+              return other?.name?.toLowerCase().includes(searchTerm.toLowerCase());
+            }
           }).map((chat) => {
             const isGroup = chat.isGroup || chat.chatName;
             const chatName = isGroup
@@ -944,16 +949,21 @@ const Chat = () => {
                 <div className="relative">
                   <div className="w-10 h-10 bg-gray-700 rounded-full flex items-center justify-center overflow-hidden">
                     {(() => {
-                      const otherUser = selectedChat.participants?.find(p => p._id !== currentUser.id);
-                      return otherUser?.avatar ? (
-                        <img 
-                          src={otherUser.avatar.includes('http') ? `${otherUser.avatar}?t=${Date.now()}` : `http://localhost:5000/uploads/${otherUser.avatar}?t=${Date.now()}`}
-                          alt={otherUser.name || "Profile"} 
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <span className="text-2xl">👤</span>
-                      );
+                      const isGroup = selectedChat.isGroup || selectedChat.chatName;
+                      if (isGroup) {
+                        return <span className="text-2xl">👥</span>;
+                      } else {
+                        const otherUser = selectedChat.participants?.find(p => p._id !== currentUser.id);
+                        return otherUser?.avatar ? (
+                          <img 
+                            src={otherUser.avatar.includes('http') ? `${otherUser.avatar}?t=${Date.now()}` : `http://localhost:5000/uploads/${otherUser.avatar}?t=${Date.now()}`}
+                            alt={otherUser.name || "Profile"} 
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-2xl">👤</span>
+                        );
+                      }
                     })()}
                   </div>
                   {/* Online status indicator */}
@@ -967,7 +977,12 @@ const Chat = () => {
                 </div>
                 <div>
                   <h2 className="font-semibold text-white">
-                    {selectedChat.participants?.find(p => p._id !== currentUser.id)?.name}
+                    {(() => {
+                      const isGroup = selectedChat.isGroup || selectedChat.chatName;
+                      return isGroup
+                        ? selectedChat.chatName
+                        : selectedChat.participants?.find(p => p._id !== currentUser.id)?.name;
+                    })()}
                   </h2>
                   {/* WhatsApp-style status: typing, online, or last seen */}
                   {(() => {

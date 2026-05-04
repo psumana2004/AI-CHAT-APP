@@ -247,4 +247,12 @@ const initializeSocket = (server) => {
   });
 };
 
-module.exports = { initializeSocket };
+// Export getIO function for other modules to access the socket.io instance
+const getIO = () => {
+  return io;
+};
+
+module.exports = {
+  initializeSocket,
+  getIO
+};

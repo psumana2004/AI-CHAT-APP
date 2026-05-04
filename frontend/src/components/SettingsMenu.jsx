@@ -80,6 +80,21 @@ const SettingsMenu = ({
 
     try {
       console.log('📤 Sending profile update request:', { name, hasAvatar: !!avatar });
+      
+      // Validate file size before sending
+      if (avatar && avatar.size > 5 * 1024 * 1024) {
+        toast.error("File size must be less than 5MB");
+        setLoading(false);
+        return;
+      }
+      
+      // Validate file type
+      if (avatar && !avatar.type.startsWith('image/')) {
+        toast.error("Only image files are allowed");
+        setLoading(false);
+        return;
+      }
+      
       const { data } = await axios.put(
         "http://localhost:5000/api/users/profile",
         formData,
@@ -98,7 +113,9 @@ const SettingsMenu = ({
       setShowEditModal(false);
       setAvatar(null);
     } catch (error) {
-      toast.error(error.response?.data?.message || "Failed to update profile");
+      console.error('❌ Profile update error:', error);
+      const errorMessage = error.response?.data?.message || error.message || "Failed to update profile";
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -224,7 +241,7 @@ const SettingsMenu = ({
                 <input
                   type="file"
                   onChange={(e) => setAvatar(e.target.files[0])}
-                  accept="image/*"
+                  accept="image/jpeg,image/jpg,image/png,image/gif,image/webp,image/svg,image/bmp,image/tiff,image/ico"
                   className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700"
                 />
                 {avatar && (
