@@ -3,15 +3,15 @@ import axios from "axios";
 import toast from "react-hot-toast";
 
 const CreateChatModal = ({ show, setShow, token, setSelectedChat, fetchChats }) => {
-  const [userId, setUserId] = useState("");
+  const [email, setEmail] = useState("");
 
   const handleCreateChat = async () => {
-    if (!userId) return toast.error("Enter User ID");
+    if (!email) return toast.error("Enter Email");
 
     try {
       const { data } = await axios.post(
         "http://localhost:5000/api/chat",
-        { userId },
+        { email },
         {
           headers: { Authorization: `Bearer ${token}` },
         }
@@ -19,7 +19,7 @@ const CreateChatModal = ({ show, setShow, token, setSelectedChat, fetchChats }) 
 
       toast.success("Chat created!");
       setShow(false);
-      setUserId("");
+      setEmail("");
       fetchChats();
       setSelectedChat(data);
 
@@ -36,10 +36,10 @@ const CreateChatModal = ({ show, setShow, token, setSelectedChat, fetchChats }) 
         <h2 className="text-xl font-bold mb-4">New Chat</h2>
 
         <input
-          type="text"
-          placeholder="Enter User ID"
-          value={userId}
-          onChange={(e) => setUserId(e.target.value)}
+          type="email"
+          placeholder="Enter Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
           className="w-full px-4 py-3 bg-gray-800 rounded-xl mb-4"
         />
 

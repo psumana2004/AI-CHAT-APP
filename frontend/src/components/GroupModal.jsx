@@ -12,8 +12,15 @@ const GroupModal = ({ show, setShow, token, fetchChats }) => {
     }
 
     try {
-      const usersArray = users.split(",").map(u => u.trim()).filter(u => u);
+      // Parse comma-separated emails and filter out empty ones
+      const usersArray = users.split(",")
+        .map(email => email.trim())
+        .filter(email => email && email.includes("@"));
       
+      if (usersArray.length === 0) {
+        return toast.error("Please enter at least one valid email");
+      }
+
       const { data } = await axios.post(
         "http://localhost:5000/api/chat/group",
         {
@@ -51,7 +58,7 @@ const GroupModal = ({ show, setShow, token, fetchChats }) => {
         />
 
         <input
-          placeholder="User IDs (comma separated)"
+          placeholder="Email IDs (comma separated)"
           value={users}
           onChange={(e) => setUsers(e.target.value)}
           className="w-full mb-4 p-3 bg-gray-800 rounded"

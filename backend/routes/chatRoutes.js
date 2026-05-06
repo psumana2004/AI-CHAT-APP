@@ -2,9 +2,8 @@ const express = require('express');
 const { accessChat, getChats, createGroupChat, deleteChat } = require('../controllers/chatController');
 const { sendMessage, getMessages } = require('../controllers/messageController');
 const protect = require('../middleware/authMiddleware');
-const upload = require('../middleware/upload');
-
 const router = express.Router();
+const upload = require('../middleware/upload');
 
 // Chat routes
 router.post('/', protect, accessChat);           // Create or get one-to-one chat
